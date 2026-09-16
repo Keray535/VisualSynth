@@ -11,6 +11,7 @@ from typing import Any
 
 from .audio.envelope import AdsrSettings
 from .audio.synth import SynthSettings
+from .audio.wavetable import WavetableSettings
 from .music.scales import DEFAULT_SCALE_NAME
 from .vision.finger_state import FingerThresholds
 
@@ -55,6 +56,8 @@ class AppConfig:
     block_size: int = 512
     master_gain: float = 0.5
     adsr: AdsrSettings = field(default_factory=AdsrSettings)
+    #: Oscillator table, morph position and phase controls (FR-7).
+    wavetable: WavetableSettings = field(default_factory=WavetableSettings)
 
     # ui
     first_run_hint_shown: bool = False
@@ -115,6 +118,10 @@ class AppConfig:
 
 
 def _nested_type(name: str) -> type | None:
-    mapping: dict[str, type] = {"thresholds": FingerThresholds, "adsr": AdsrSettings}
+    mapping: dict[str, type] = {
+        "thresholds": FingerThresholds,
+        "adsr": AdsrSettings,
+        "wavetable": WavetableSettings,
+    }
     nested = mapping.get(name)
     return nested if nested is not None and is_dataclass(nested) else None

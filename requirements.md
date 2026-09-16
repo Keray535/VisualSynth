@@ -13,7 +13,7 @@ right hand thumb→pinky = degrees 1–5, left hand thumb→pinky = degrees 6–
 | Hand mapping | Right hand = degrees 1–5, left hand = degrees 6–10 |
 | Polyphony | Full polyphonic, 10 simultaneous voices |
 | Expression | **None for now** — no velocity control, no gesture octave control, no filter |
-| Waveform | Sawtooth only |
+| Waveform | Wavetable oscillator. Built-in table: saw, sine, square, morphed continuously. Users can import their own `.wav` tables. |
 | GUI | PySide6 |
 | Distribution | Run from source in a venv |
 
@@ -67,7 +67,7 @@ right hand thumb→pinky = degrees 1–5, left hand thumb→pinky = degrees 6–
 ### FR-5 Audio synthesis
 - **FR-5.1** Real-time output through `sounddevice.OutputStream` — `float32`, 48 kHz default, block size configurable (default 512).
 - **FR-5.2** **Fixed voice allocation**: 10 voices, voice index = degree index. No voice stealing; a re-triggered degree always reuses its own voice.
-- **FR-5.3** Each voice is a **PolyBLEP-corrected sawtooth oscillator**, so high notes do not alias.
+- **FR-5.3** Each voice is a **band-limited wavetable oscillator** (see FR-7), so high notes do not alias. Position 0 of the built-in table is a sawtooth, which is what the instrument plays with no configuration.
 - **FR-5.4** Each voice has a linear **ADSR** envelope (defaults: A 8 ms, D 60 ms, S 0.7, R 120 ms) to avoid clicks. Velocity is fixed at 1.0.
 - **FR-5.5** Mixing: `mix = sum(active_voices) / sqrt(max(1, n_active))`, then a `tanh` soft-clip limiter, then master gain.
 - **FR-5.6** Note events cross into the audio callback through a thread-safe queue drained non-blockingly at the top of each callback; the callback allocates nothing per block.
@@ -76,12 +76,21 @@ right hand thumb→pinky = degrees 1–5, left hand thumb→pinky = degrees 6–
 
 ### FR-6 Application shell
 - **FR-6.1** Entry point `python -m visualsynth` launches the window.
-- **FR-6.2** Settings (scale, root, camera index, audio device, master gain, thresholds, swap_hands) persist to `%APPDATA%/visualsynth/settings.json` and reload at startup.
+- **FR-6.2** Settings (scale, root, camera index, audio device, master gain, thresholds, swap_hands, wavetable table/position/phase/rand) persist to `%APPDATA%/visualsynth/settings.json` and reload at startup.
 - **FR-6.3** Clean shutdown: audio stream closed, camera released, vision thread joined.
 - **FR-6.4** A helper script downloads the MediaPipe `hand_landmarker.task` model into `visualsynth/models/`; the app fails with a clear, actionable message if the model is missing.
 
+### FR-7 Wavetable oscillator
+- **FR-7.1** The voice source is a wavetable: a stack of 2048-sample single-cycle frames. The built-in table holds three, **in order: saw, sine, square**.
+- **FR-7.2** Anti-aliasing is by **mipmap**. Each frame is stored once per octave band with the harmonics that band cannot carry removed; level `k` keeps `1024 >> k` harmonics and a note selects its level from the phase increment alone: `level = clamp(ceil(log2(2048 * inc)), 0, 10)`. No harmonic above Nyquist is ever read.
+- **FR-7.3** A **position** in [0, 1] scans the frame stack and linearly blends the two frames it falls between, so a held note morphs continuously rather than stepping between frames.
+- **FR-7.4** **Phase** (0–1, shown as 0–360°) sets the start phase of a note. **Rand phase** (0–1, shown as 0–100 %) adds `U(0, rand)` on top at each note-on. Phase restarts when a note begins from silence or from its release tail; a re-trigger of a still-held note keeps its phase, so no click is introduced.
+- **FR-7.5** Users can import their own wavetables as `.wav`. PCM (8/16/24/32-bit) and IEEE float (32/64-bit) are supported, including `WAVE_FORMAT_EXTENSIBLE`; stereo is mean-summed to mono and every frame is peak-normalised and DC-removed. A length that divides evenly by 2048 is split into that many frames (capped at 64, evenly spaced); any other length is treated as one cycle and resampled.
+- **FR-7.6** Imported files are copied into `%APPDATA%/visualsynth/wavetables/`, so a table survives a restart and a moved source file. A file that will not decode is skipped with a message and never blocks startup.
+- **FR-7.7** Table and position changes cross into the audio thread through the same command queue as notes, carrying an already-blended table: the callback only stores a pointer, and the sender keeps the previous table referenced so nothing is freed on the audio thread.
+
 ### Out of scope (this version)
-Velocity/dynamics, gesture-driven octave shifting, filters, waveforms other than saw, effects, MIDI in/out, recording/export, `.exe` packaging.
+Velocity/dynamics, gesture-driven octave shifting, filters, effects, MIDI in/out, recording/export, `.exe` packaging. Wavetable position, phase and rand are set in the UI and are **not** gesture-controlled.
 
 ---
 
@@ -159,7 +168,7 @@ Single window, default 1100×720, resizable, minimum 900×600, dark theme.
 - **UX-4.2** Root note selector: C, C♯/D♭ … B.
 - **UX-4.3** Camera and audio-output device selectors list friendly device names; audio also shows host API.
 - **UX-4.4** Master volume slider.
-- **UX-4.5** Keyboard: `Esc` = panic, `Space` = mute toggle, `Ctrl+,` = detection settings.
+- **UX-4.5** Keyboard: `Esc` = panic, `Space` = mute toggle, `Ctrl+,` = detection settings, `Ctrl+T` = wavetable window.
 - **UX-4.6** Every control change takes effect immediately; nothing requires a restart.
 
 ### UX-5 Status & diagnostics
@@ -176,3 +185,13 @@ Always-visible compact readout: capture FPS, detection rate, inference time (ms)
 - **UX-7.1** Cold start to first preview frame < 3 s.
 - **UX-7.2** First launch shows a one-time hint over the preview: fingers = degrees, right = 1–5, left = 6–10.
 - **UX-7.3** Defaults are playable with zero configuration: C Major, camera 0, default output device.
+
+### UX-8 Wavetable window
+- **UX-8.1** A **modeless** window (`Ctrl+T`, or the Wavetable button), so a held chord can be heard morphing while it is edited. The main window keeps playing.
+- **UX-8.2** The frame stack is drawn in table order, receding up and to the right, with the sounding blended cycle highlighted at the depth the current position sits at. A table with more frames than fits legibly is thinned to an evenly spaced subset.
+- **UX-8.3** Position slider with a readout naming the frames it is between (`saw`, or `saw → sine 37%`).
+- **UX-8.4** Phase slider, 0–360°. The drawn cycle rotates with it and a marker shows where a note starts, labelled in degrees so the cue is not position-only.
+- **UX-8.5** Rand slider, 0–100 %, drawn as a range strip from the start marker to the furthest a note-on can land.
+- **UX-8.6** Table selector lists the built-in table and every imported one; `Load .wav...` imports a new one and switches to it.
+- **UX-8.7** An import that fails shows the reason inline; the current table keeps sounding.
+- **UX-8.8** Reset returns table, position, phase and rand to their defaults.

@@ -13,6 +13,7 @@ from .music.scales import DEFAULT_SCALE_NAME, default_registry
 from .performance import Performance
 from .ui.main_window import MainWindow
 from .vision.worker import VisionWorker
+from .wavetable_library import WavetableController, WavetableLibrary
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +64,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     worker = VisionWorker(config, performance.handle_events)
 
-    window = MainWindow(config, performance, engine, worker)
+    library = WavetableLibrary()
+    library.scan()
+    wavetables = WavetableController(engine.synth, library, config.wavetable)
+
+    window = MainWindow(config, performance, engine, worker, wavetables)
     window.show()
     worker.start()
 

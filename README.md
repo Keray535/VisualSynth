@@ -1,8 +1,8 @@
 # VisualSynth
 
 A desktop instrument you play with your hands in front of a webcam. Each finger is one
-degree of a scale you pick in the UI; holding a finger **extended** sustains that note as a
-sawtooth wave, curling it stops the note.
+degree of a scale you pick in the UI; holding a finger **extended** sustains that note,
+curling it stops the note. The voice is a wavetable you can morph and swap while playing.
 
 ```
 Right hand:  thumb=1  index=2  middle=3  ring=4  pinky=5
@@ -35,8 +35,32 @@ Tested on Windows 11 with Python 3.14.5.
 | `Esc` | Panic - releases every voice |
 | `Space` | Mute toggle |
 | `Ctrl+,` | Detection thresholds (angles, debounce, idle rate) |
+| `Ctrl+T` | Wavetable window - morph position, phase, rand, `.wav` import |
 
 Settings persist to `%APPDATA%/visualsynth/settings.json`.
+
+## Wavetable
+
+`Ctrl+T` opens the wavetable window. It is modeless, so you can hold a chord and hear it
+change as you drag.
+
+The built-in table has three frames **in order: saw, sine, square**. **Position** scans the
+stack and blends between adjacent frames, so 0.0 is the plain saw this instrument started as,
+0.5 is a pure sine and 1.0 is a square - and everything between is a real crossfade, not a
+step. **Phase** sets where in the cycle a note starts, and **Rand** adds a random amount on
+top of it per note, which thickens a ten-finger chord considerably.
+
+`Load .wav...` imports your own table. PCM (8/16/24/32-bit) and IEEE float (32/64-bit) are
+both read, including `WAVE_FORMAT_EXTENSIBLE` - the stdlib `wave` module handles none of
+that, so the reader in `audio/wavfile.py` is written out by hand rather than pulling in
+`soundfile`. A file whose length divides by 2048 is taken as that many frames (capped at 64);
+anything else is treated as a single cycle and resampled. Imports are copied into
+`%APPDATA%/visualsynth/wavetables/`, so they survive a restart and a moved original.
+
+High notes do not alias, because each frame is stored once per octave with the harmonics that
+octave cannot carry removed, and a note picks its level from its own pitch. Measured against a
+naive ramp at 48 kHz: 1.8 % of its aliasing energy at 110 Hz, 0.2 % at 440 Hz, and nothing
+measurable above 3 kHz.
 
 ## Layout
 
@@ -45,10 +69,13 @@ visualsynth/
   app.py           wiring: audio engine + performance + vision thread + window
   config.py        AppConfig dataclass, JSON persistence
   performance.py   degrees -> notes -> voices; owns the current scale and root
+  wavetable_library.py  wavetable files on disk + the control seam the UI drives
   music/           scale library (scales.json), degree->MIDI mapping, tuning
-  audio/           PolyBLEP saw, ADSR, 10-voice synth, sounddevice engine
+  audio/           wavetable oscillator + WAV reader, PolyBLEP saw, ADSR,
+                   10-voice synth, sounddevice engine
   vision/          camera, MediaPipe tracker, tracker pool, finger state machine, QThread worker
-  ui/              main window, video overlay, note strip, settings dialog, theme
+  ui/              main window, video overlay, note strip, settings dialog,
+                   wavetable window, theme
 ```
 
 Three threads, one direction of flow: the **vision thread** captures and detects, hands note
@@ -71,9 +98,9 @@ right hand an octave up.
 .venv\Scripts\python -m pytest tests
 ```
 
-115 tests, all headless - synthetic hand landmarks stand in for the camera, and the synth
-renders into a buffer instead of a device. Coverage: `music/` 99-100%, `audio/` DSP 95-100%,
-`vision/` state machines 96-100%.
+191 tests, all headless - synthetic hand landmarks stand in for the camera, synthetic RIFF
+bytes stand in for wavetable files, and the synth renders into a buffer instead of a device.
+Coverage: `music/` 99-100%, `audio/` DSP 95-100%, `vision/` state machines 96-100%.
 
 ## Measured performance on this machine
 
@@ -110,9 +137,10 @@ Tuning knobs in `settings.json` if your machine differs: `tracker_workers` (3),
 
 ## Scope
 
-Ten polyphonic saw voices at fixed velocity. Deliberately not included for now: velocity or
-dynamics, gesture-driven octave shifting, filters, other waveforms, effects, MIDI, recording,
-and `.exe` packaging.
+Ten polyphonic wavetable voices at fixed velocity. Deliberately not included for now:
+velocity or dynamics, gesture-driven octave shifting, filters, effects, MIDI, recording, and
+`.exe` packaging. Wavetable position, phase and rand are UI controls - they are not
+gesture-mapped.
 
 ## Scripts
 

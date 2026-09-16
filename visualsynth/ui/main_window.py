@@ -25,10 +25,12 @@ from ..music.tuning import NOTE_NAMES
 from ..performance import Performance
 from ..vision.camera import CameraDevice, list_cameras
 from ..vision.worker import FrameUpdate, VisionWorker
+from ..wavetable_library import WavetableController
 from . import theme
 from .note_strip import NoteStrip
 from .settings_dialog import SettingsDialog
 from .video_widget import VideoWidget
+from .wavetable_window import WavetableWindow
 
 log = logging.getLogger(__name__)
 
@@ -63,12 +65,16 @@ class MainWindow(QMainWindow):
         performance: Performance,
         engine: AudioEngine,
         worker: VisionWorker,
+        wavetables: WavetableController,
     ) -> None:
         super().__init__()
         self.config = config
         self.performance = performance
         self.engine = engine
         self.worker = worker
+        self.wavetables = wavetables
+        #: Held on the window, or a modeless child is garbage-collected at once.
+        self.wavetable_window: WavetableWindow | None = None
         self._muted = False
         self._gain_before_mute = config.master_gain
 
@@ -173,6 +179,10 @@ class MainWindow(QMainWindow):
 
         layout.addStretch(1)
 
+        self.wavetable_button = QPushButton("Wavetable...  (Ctrl+T)")
+        self.wavetable_button.clicked.connect(self.open_wavetable)
+        layout.addWidget(self.wavetable_button)
+
         self.settings_button = QPushButton("Detection settings...")
         self.settings_button.clicked.connect(self._open_settings)
         layout.addWidget(self.settings_button)
@@ -232,6 +242,11 @@ class MainWindow(QMainWindow):
         settings.setShortcut(QKeySequence("Ctrl+,"))
         settings.triggered.connect(self._open_settings)
         self.addAction(settings)
+
+        wavetable = QAction("Wavetable", self)
+        wavetable.setShortcut(QKeySequence("Ctrl+T"))
+        wavetable.triggered.connect(self.open_wavetable)
+        self.addAction(wavetable)
 
     def _connect_worker(self) -> None:
         self.worker.frameReady.connect(self._on_frame)
@@ -316,6 +331,14 @@ class MainWindow(QMainWindow):
         self.worker.set_thresholds(thresholds)
         self.worker.set_idle_inference_fps(self.config.idle_inference_fps)
 
+    def open_wavetable(self) -> None:
+        """Modeless, so a held chord can be heard morphing as it is edited (UX-8.1)."""
+        if self.wavetable_window is None:
+            self.wavetable_window = WavetableWindow(self.wavetables, self)
+        self.wavetable_window.show()
+        self.wavetable_window.raise_()
+        self.wavetable_window.activateWindow()
+
     # ---- actions ----
 
     def panic(self) -> None:
@@ -368,8 +391,11 @@ class MainWindow(QMainWindow):
         self.worker.stop()
         self.performance.panic()
         self.engine.stop()
+        if self.wavetable_window is not None:
+            self.wavetable_window.close()
         if self._probe.isRunning():
             self._probe.wait(2000)
+        self.config.wavetable = self.wavetables.settings()
         try:
             self.config.save()
         except OSError:
