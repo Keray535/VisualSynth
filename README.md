@@ -35,14 +35,15 @@ Tested on Windows 11 with Python 3.14.5.
 | `Esc` | Panic - releases every voice |
 | `Space` | Mute toggle |
 | `Ctrl+,` | Detection thresholds (angles, debounce, idle rate) |
-| `Ctrl+T` | Wavetable window - morph position, phase, rand, `.wav` import |
+| `Ctrl+T` | Shows / hides the wavetable panel - morph position, phase, rand, `.wav` import |
 
 Settings persist to `%APPDATA%/visualsynth/settings.json`.
 
 ## Wavetable
 
-`Ctrl+T` opens the wavetable window. It is modeless, so you can hold a chord and hear it
-change as you drag.
+The wavetable panel is fixed into the main window, under the preview; drag the split to give
+it more or less room, and `Ctrl+T` hides and shows it. It is not a separate window, so a held
+chord keeps sounding and you hear it change as you drag.
 
 The built-in table has three frames **in order: saw, sine, square**. **Position** scans the
 stack and blends between adjacent frames, so 0.0 is the plain saw this instrument started as,

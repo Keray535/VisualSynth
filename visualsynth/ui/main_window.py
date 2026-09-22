@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QSlider,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -30,7 +31,7 @@ from . import theme
 from .note_strip import NoteStrip
 from .settings_dialog import SettingsDialog
 from .video_widget import VideoWidget
-from .wavetable_window import WavetableWindow
+from .wavetable_panel import WavetablePanel
 
 log = logging.getLogger(__name__)
 
@@ -73,19 +74,19 @@ class MainWindow(QMainWindow):
         self.engine = engine
         self.worker = worker
         self.wavetables = wavetables
-        #: Held on the window, or a modeless child is garbage-collected at once.
-        self.wavetable_window: WavetableWindow | None = None
         self._muted = False
         self._gain_before_mute = config.master_gain
 
         self.setWindowTitle("VisualSynth")
-        self.resize(1100, 720)
+        self.resize(1180, 860)
         self.setMinimumSize(900, 600)
         self.setStyleSheet(theme.STYLESHEET)
 
         self.video = VideoWidget()
         self.video.set_swap_hands(config.swap_hands)
         self.strip = NoteStrip()
+        self.wavetable_panel = WavetablePanel(wavetables)
+        self.wavetable_panel.setVisible(config.wavetable_panel_visible)
 
         central = QWidget()
         outer = QVBoxLayout(central)
@@ -95,7 +96,7 @@ class MainWindow(QMainWindow):
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
         top.setSpacing(0)
-        top.addWidget(self.video, stretch=1)
+        top.addWidget(self._build_stage(), stretch=1)
         top.addWidget(self._build_panel())
         outer.addLayout(top, stretch=1)
         outer.addWidget(self.strip)
@@ -119,6 +120,22 @@ class MainWindow(QMainWindow):
             config.first_run_hint_shown = True
 
     # ---- construction ----
+
+    def _build_stage(self) -> QWidget:
+        """Preview over the wavetable panel, split so either can be given room.
+
+        The panel is a permanent child - `Ctrl+T` hides and shows it, and it is
+        never a window of its own (UX-8.1).
+        """
+        self.stage = QSplitter(Qt.Orientation.Vertical)
+        self.stage.setObjectName("stage")
+        self.stage.setChildrenCollapsible(False)
+        self.stage.addWidget(self.video)
+        self.stage.addWidget(self.wavetable_panel)
+        self.stage.setStretchFactor(0, 3)
+        self.stage.setStretchFactor(1, 2)
+        self.stage.setSizes([460, 280])
+        return self.stage
 
     def _build_panel(self) -> QWidget:
         panel = QFrame()
@@ -179,8 +196,9 @@ class MainWindow(QMainWindow):
 
         layout.addStretch(1)
 
-        self.wavetable_button = QPushButton("Wavetable...  (Ctrl+T)")
-        self.wavetable_button.clicked.connect(self.open_wavetable)
+        self.wavetable_button = QPushButton()
+        self.wavetable_button.clicked.connect(self.toggle_wavetable)
+        self._refresh_wavetable_button()
         layout.addWidget(self.wavetable_button)
 
         self.settings_button = QPushButton("Detection settings...")
@@ -245,7 +263,7 @@ class MainWindow(QMainWindow):
 
         wavetable = QAction("Wavetable", self)
         wavetable.setShortcut(QKeySequence("Ctrl+T"))
-        wavetable.triggered.connect(self.open_wavetable)
+        wavetable.triggered.connect(self.toggle_wavetable)
         self.addAction(wavetable)
 
     def _connect_worker(self) -> None:
@@ -331,13 +349,20 @@ class MainWindow(QMainWindow):
         self.worker.set_thresholds(thresholds)
         self.worker.set_idle_inference_fps(self.config.idle_inference_fps)
 
-    def open_wavetable(self) -> None:
-        """Modeless, so a held chord can be heard morphing as it is edited (UX-8.1)."""
-        if self.wavetable_window is None:
-            self.wavetable_window = WavetableWindow(self.wavetables, self)
-        self.wavetable_window.show()
-        self.wavetable_window.raise_()
-        self.wavetable_window.activateWindow()
+    def toggle_wavetable(self) -> None:
+        """Show or hide the fixed panel; the sound never changes either way."""
+        visible = self.wavetable_panel.isHidden()
+        self.wavetable_panel.setVisible(visible)
+        self.config.wavetable_panel_visible = visible
+        self._refresh_wavetable_button()
+        if visible:
+            self.wavetable_panel.focus_controls()
+
+    def _refresh_wavetable_button(self) -> None:
+        shown = not self.wavetable_panel.isHidden()
+        self.wavetable_button.setText(
+            f"{'Hide' if shown else 'Show'} wavetable  (Ctrl+T)"
+        )
 
     # ---- actions ----
 
@@ -391,8 +416,6 @@ class MainWindow(QMainWindow):
         self.worker.stop()
         self.performance.panic()
         self.engine.stop()
-        if self.wavetable_window is not None:
-            self.wavetable_window.close()
         if self._probe.isRunning():
             self._probe.wait(2000)
         self.config.wavetable = self.wavetables.settings()

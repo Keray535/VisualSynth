@@ -61,6 +61,8 @@ class AppConfig:
 
     # ui
     first_run_hint_shown: bool = False
+    #: The wavetable panel is fixed under the preview; Ctrl+T only hides it.
+    wavetable_panel_visible: bool = True
 
     # ---- derived ----
 

@@ -168,7 +168,7 @@ Single window, default 1100×720, resizable, minimum 900×600, dark theme.
 - **UX-4.2** Root note selector: C, C♯/D♭ … B.
 - **UX-4.3** Camera and audio-output device selectors list friendly device names; audio also shows host API.
 - **UX-4.4** Master volume slider.
-- **UX-4.5** Keyboard: `Esc` = panic, `Space` = mute toggle, `Ctrl+,` = detection settings, `Ctrl+T` = wavetable window.
+- **UX-4.5** Keyboard: `Esc` = panic, `Space` = mute toggle, `Ctrl+,` = detection settings, `Ctrl+T` = show / hide the wavetable panel.
 - **UX-4.6** Every control change takes effect immediately; nothing requires a restart.
 
 ### UX-5 Status & diagnostics
@@ -186,8 +186,8 @@ Always-visible compact readout: capture FPS, detection rate, inference time (ms)
 - **UX-7.2** First launch shows a one-time hint over the preview: fingers = degrees, right = 1–5, left = 6–10.
 - **UX-7.3** Defaults are playable with zero configuration: C Major, camera 0, default output device.
 
-### UX-8 Wavetable window
-- **UX-8.1** A **modeless** window (`Ctrl+T`, or the Wavetable button), so a held chord can be heard morphing while it is edited. The main window keeps playing.
+### UX-8 Wavetable panel
+- **UX-8.1** A panel **fixed into the main window** under the preview, on a draggable split, so a held chord can be heard morphing while it is edited and nothing covers the preview. It is never a separate window and cannot be detached; `Ctrl+T` (or the panel button) only hides and shows it, and that choice persists in settings.
 - **UX-8.2** The frame stack is drawn in table order, receding up and to the right, with the sounding blended cycle highlighted at the depth the current position sits at. A table with more frames than fits legibly is thinned to an evenly spaced subset.
 - **UX-8.3** Position slider with a readout naming the frames it is between (`saw`, or `saw → sine 37%`).
 - **UX-8.4** Phase slider, 0–360°. The drawn cycle rotates with it and a marker shows where a note starts, labelled in degrees so the cue is not position-only.

@@ -25,7 +25,9 @@ class VideoWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumSize(640, 480)
+        # the wavetable panel shares the window height with the preview, so the
+        # floor is the smallest frame that still reads, not the capture size
+        self.setMinimumSize(480, 360)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._image: QImage | None = None
         self._observations: list[HandObservation] = []

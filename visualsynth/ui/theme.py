@@ -90,4 +90,13 @@ QFrame#panel {{
     border-left: 1px solid {BORDER.name()};
 }}
 QFrame#separator {{ background-color: {BORDER.name()}; max-height: 1px; }}
+QFrame#wavetablePanel {{
+    background-color: {SURFACE.name()};
+    border-top: 1px solid {BORDER.name()};
+}}
+QSplitter#stage::handle:vertical {{
+    background-color: {BACKGROUND.name()};
+    height: 6px;
+}}
+QSplitter#stage::handle:vertical:hover {{ background-color: {BORDER.name()}; }}
 """

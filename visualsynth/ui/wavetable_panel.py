@@ -1,10 +1,11 @@
-"""Wavetable window: frame stack, morph position, phase and import (UX-8).
+"""Wavetable panel: frame stack, morph position, phase and import (UX-8).
 
-Modeless, so the instrument keeps playing while the table is edited - the point
-is to hear a held chord change as the position moves (UX-8.1).
+Fixed into the main window under the preview and never detachable - `Ctrl+T`
+only hides and shows it. The instrument keeps playing either way, so a held
+chord is heard morphing as the position moves (UX-8.1).
 
 Everything drawn here arrives as plain float64 arrays from `WavetableController`;
-the window never touches a voice or an oscillator (NFR-4.1).
+the panel never touches a voice or an oscillator (NFR-4.1).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -50,7 +52,9 @@ class WavetableCanvas(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumHeight(260)
+        # low, because the panel shares the window height with the preview; the
+        # splitter decides how much of it the stack actually gets
+        self.setMinimumHeight(110)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._frames: list[np.ndarray] = []
         self._cycle: np.ndarray = np.zeros(2)
@@ -212,41 +216,46 @@ def _polyline(cycle: np.ndarray, plane: QRectF, depth_t: float, depth: float) ->
     )
 
 
-class WavetableWindow(QWidget):
-    """Frame display plus the position, phase, rand and import controls."""
+class WavetablePanel(QFrame):
+    """Frame display plus the position, phase, rand and import controls.
+
+    A child of the main window, built once and only ever hidden or shown, so
+    there is no window state to track and no way to tear it off.
+    """
 
     def __init__(self, controller: WavetableController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowFlag(Qt.WindowType.Window, True)
-        self.setWindowTitle("Wavetable")
-        self.resize(560, 520)
-        self.setMinimumSize(460, 440)
-        if parent is None:
-            # a parented window inherits the main window's sheet; a stray one
-            # would otherwise render in Qt's default light palette
-            self.setStyleSheet(theme.STYLESHEET)
+        self.setObjectName("wavetablePanel")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self.controller = controller
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(16, 10, 16, 10)
+        layout.setSpacing(8)
+
+        # everything that is not a slider on one line, so the canvas keeps the
+        # height the panel is given
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        header.addWidget(self._title("WAVETABLE"))
+        self.table_combo = QComboBox()
+        self.table_combo.currentTextChanged.connect(self._on_table_changed)
+        header.addWidget(self.table_combo, stretch=1)
+        self.load_button = QPushButton("Load .wav...")
+        self.load_button.clicked.connect(self._on_load)
+        header.addWidget(self.load_button)
+        self.reset_button = QPushButton("Reset")
+        self.reset_button.clicked.connect(self._on_reset)
+        header.addWidget(self.reset_button)
+        layout.addLayout(header)
 
         self.canvas = WavetableCanvas()
         layout.addWidget(self.canvas, stretch=1)
 
-        layout.addWidget(self._title("TABLE"))
-        table_row = QHBoxLayout()
-        self.table_combo = QComboBox()
-        self.table_combo.currentTextChanged.connect(self._on_table_changed)
-        table_row.addWidget(self.table_combo, stretch=1)
-        self.load_button = QPushButton("Load .wav...")
-        self.load_button.clicked.connect(self._on_load)
-        table_row.addWidget(self.load_button)
-        layout.addLayout(table_row)
-
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(4)
         layout.addLayout(grid)
 
         self.position = self._slider()
@@ -264,20 +273,13 @@ class WavetableWindow(QWidget):
         self.rand_value = self._readout()
         self._add_row(grid, 2, "RAND", self.rand, self.rand_value)
 
+        # hidden while empty, so a failed import grows the panel instead of
+        # leaving a blank line above the sliders (UX-8.7)
         self.error = QLabel()
         self.error.setWordWrap(True)
-        self.error.setStyleSheet("color: #ef6461;")
+        self.error.setStyleSheet(f"color: {theme.ERROR.name()};")
+        self.error.setVisible(False)
         layout.addWidget(self.error)
-
-        buttons = QHBoxLayout()
-        buttons.addStretch(1)
-        self.reset_button = QPushButton("Reset")
-        self.reset_button.clicked.connect(self._on_reset)
-        buttons.addWidget(self.reset_button)
-        self.close_button = QPushButton("Close")
-        self.close_button.clicked.connect(self.close)
-        buttons.addWidget(self.close_button)
-        layout.addLayout(buttons)
 
         self._populate_tables()
         self._pull_from_controller()
@@ -313,6 +315,14 @@ class WavetableWindow(QWidget):
         grid.addWidget(value, row, 2)
         grid.setColumnStretch(1, 1)
 
+    def focus_controls(self) -> None:
+        """Ctrl+T shows the panel; the position slider is what it lands on."""
+        self.position.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def _set_error(self, message: str | None) -> None:
+        self.error.setText(message or "")
+        self.error.setVisible(bool(message))
+
     def _populate_tables(self) -> None:
         self.table_combo.blockSignals(True)
         self.table_combo.clear()
@@ -328,7 +338,7 @@ class WavetableWindow(QWidget):
         if not name:
             return
         self.controller.set_table(name)
-        self.error.clear()
+        self._set_error(None)
         self._refresh()
 
     def _on_position_changed(self, value: int) -> None:
@@ -354,9 +364,9 @@ class WavetableWindow(QWidget):
         except (WavError, ValueError, OSError) as exc:
             # the current table keeps sounding; only the message changes (UX-8.7)
             log.warning("wavetable import failed: %s", exc)
-            self.error.setText(str(exc))
+            self._set_error(str(exc))
             return
-        self.error.clear()
+        self._set_error(None)
         self._populate_tables()
         self._pull_from_controller()
 
@@ -366,7 +376,7 @@ class WavetableWindow(QWidget):
         self.controller.set_position(defaults.position)
         self.controller.set_phase(defaults.phase)
         self.controller.set_rand_phase(defaults.rand_phase)
-        self.error.clear()
+        self._set_error(None)
         self._populate_tables()
         self._pull_from_controller()
 
